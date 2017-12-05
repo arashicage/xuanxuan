@@ -2,6 +2,7 @@ import Entity from './entity';
 import Status from '../../utils/status';
 import Lang from '../../lang';
 import Pinyin from '../../utils/pinyin';
+import {ChatMessage} from './index';
 
 const STATUS = new Status({
     local: 0,
@@ -23,6 +24,7 @@ const COMMITTERS_TYPES = {
 };
 
 const MAX_MESSAGE_COUNT = 100;
+const DISMISS_VISIBLE_TIME = 1000*60*60*24*90;
 
 class Chat extends Entity {
     static NAME = 'Chat';
@@ -37,12 +39,14 @@ class Chat extends Entity {
         createdBy: {type: 'string', indexed: true},
         editedDate: {type: 'timestamp'},
         lastActiveTime: {type: 'timestamp', indexed: true},
+        dismissDate: {type: 'timestamp', indexed: true},
         star: {type: 'boolean', indexed: true},
         mute: {type: 'boolean', indexed: true},
         public: {type: 'boolean', indexed: true},
         admins: {type: 'set'},
         members: {type: 'set'},
         committers: {type: 'string'},
+        category: {type: 'string'},
     });
 
     constructor(data, entityType = Chat.NAME) {
@@ -55,6 +59,17 @@ class Chat extends Entity {
                 this.onStatusChange(newStatus, this);
             }
         };
+
+        this._maxMsgOrder = 0;
+    }
+
+    get maxMsgOrder() {
+        return this._maxMsgOrder;
+    }
+
+    newMsgOrder() {
+        this._maxMsgOrder += 1;
+        return this._maxMsgOrder;
     }
 
     ensureGid() {
@@ -113,8 +128,26 @@ class Chat extends Entity {
         return this.type === TYPES.one2one;
     }
 
+    get isDeleteOne2One() {
+        return this.isOne2One && this._isDeleteOne2One;
+    }
+
+    set isDeleteOne2One(flag) {
+        if (this.isOne2One) {
+            this._isDeleteOne2One = flag;
+        }
+    }
+
     get isGroup() {
         return this.type === TYPES.group;
+    }
+
+    get category() {
+        return this.$get('category');
+    }
+
+    set category(name) {
+        return this.$set('category', name);
     }
 
     get name() {
@@ -182,6 +215,22 @@ class Chat extends Entity {
 
     set createdDate(createdDate) {
         this.$set('createdDate', createdDate);
+    }
+
+    get dismissDate() {
+        return this.$get('dismissDate');
+    }
+
+    set dismissDate(dismissDate) {
+        this.$set('dismissDate', dismissDate);
+    }
+
+    get isDismissed() {
+        return !!this.dismissDate;
+    }
+
+    canDismiss(user) {
+        return !this.isDismissed && this.isGroup && this.isAdmin(user);
     }
 
     get admins() {
@@ -256,23 +305,45 @@ class Chat extends Entity {
     }
 
     canRename(user) {
-        return this.isCommitter(user) && !this.isOne2One;
+        return !this.isDismissed && this.isCommitter(user) && !this.isOne2One;
     }
 
     canInvite(user) {
-        return (this.isAdmin(user) || this.isCommitter(user)) && (!this.isSystem);
+        return !this.isDismissed && (this.isAdmin(user) || this.isCommitter(user)) && (!this.isSystem);
+    }
+
+    canKickOff(user, kickOfWho) {
+        return this.isGroup && !this.isSystem && (!kickOfWho || kickOfWho.id !== user.id) && this.isAdmin(user);
     }
 
     canMakePublic(user) {
-        return this.isAdmin(user) && this.isGroup;
+        return !this.isDismissed && this.isAdmin(user) && this.isGroup;
     }
 
     canSetCommitters(user) {
-        return this.isAdmin(user) && !this.isOne2One;
+        return !this.isDismissed && this.isAdmin(user) && !this.isOne2One;
     }
 
     isReadonly(member) {
-        return !this.isCommitter(member);
+        return this.isDeleteOne2One || this.isDismissed || !this.isCommitter(member);
+    }
+
+    get visible() {
+        if (this._visible === undefined) {
+            const dismissDate = this.dismissDate;
+            if (dismissDate) {
+                const now = new Date().getTime();
+                this._visible = now <= (dismissDate + DISMISS_VISIBLE_TIME);
+            } else {
+                this._visible = true;
+            }
+        }
+        return this._visible;
+    }
+
+    get visibleDate() {
+        const dismissDate = this.dismissDate;
+        return dismissDate ? (dismissDate + DISMISS_VISIBLE_TIME) : 0;
     }
 
     get hasWhitelist() {
@@ -416,7 +487,13 @@ class Chat extends Entity {
         const appMembers = app.members;
         const currentUser = app.user;
         if (this.isOne2One && !this._theOtherOne) {
-            this._theOtherOne = this.getMembersSet(appMembers).find(member => member.id !== currentUser.id);
+            let member = this.getMembersSet(appMembers).find(member => member.id !== currentUser.id);
+            if (member.temp) {
+                member = appMembers.get(member.id);
+                this._membersSet = null;
+                return member;
+            }
+            this._theOtherOne = member;
         }
         return this._theOtherOne;
     }
@@ -434,11 +511,11 @@ class Chat extends Entity {
     }
 
     get canJoin() {
-        return this.public && this.isGroup;
+        return !this.isDismissed && this.public && this.isGroup;
     }
 
-    get canExit() {
-        return this.isGroup;
+    canExit(user) {
+        return this.isGroup && !this.isOwner(user);
     }
 
     get isSystem() {
@@ -515,19 +592,19 @@ class Chat extends Entity {
                     checkMessage.reset(message);
                 } else {
                     this._messages.push(message);
-                    newMessageCount++;
+                    newMessageCount += 1;
                     if (!localMessage && userId !== message.senderId) {
                         message.unread = true;
-                        noticeCount++;
+                        noticeCount += 1;
                     } else {
                         message.unread = false;
                     }
-                    // if(message.unread) {
-                    //     noticeCount++;
-                    // }
                 }
                 if (lastActiveTime < message.date) {
                     lastActiveTime = message.date;
+                }
+                if (message.order) {
+                    this._maxMsgOrder = Math.max(this._maxMsgOrder, message.order);
                 }
             } else if (DEBUG) {
                 console.warn('The message date is not defined.', message);
@@ -537,16 +614,7 @@ class Chat extends Entity {
         this.noticeCount = noticeCount;
 
         if (newMessageCount) {
-            this._messages.sort((x, y) => {
-                let orderResult = x.date - y.date;
-                if (orderResult === 0) {
-                    orderResult = (x.id || Number.MAX_SAFE_INTEGER) - (y.id || Number.MAX_SAFE_INTEGER);
-                }
-                if (orderResult === 0) {
-                    orderResult = x.order - y.order;
-                }
-                return orderResult;
-            });
+            this._messages = ChatMessage.sort(this._messages);
         }
 
         if (limitSize && this._messages.length > MAX_MESSAGE_COUNT) {
@@ -609,11 +677,12 @@ class Chat extends Entity {
                 if (result !== 0) break;
                 if (typeof order === 'function') {
                     result = order(y, x);
-                    continue;
-                }
-                const isInverse = order[0] === '-';
-                if (isInverse) order = order.substr(1);
-                switch (order) {
+                } else {
+                    const isInverse = order[0] === '-';
+                    if (isInverse) order = order.substr(1);
+                    let xValue;
+                    let yValue;
+                    switch (order) {
                     case 'isSystem':
                     case 'hide':
                     case 'star':
@@ -625,7 +694,6 @@ class Chat extends Entity {
                         }
                         break;
                     default:
-                        let xValue, yValue;
                         if (order === 'name' && app) {
                             xValue = x.getDisplayName(app, false);
                             yValue = y.getDisplayName(app, false);
@@ -638,13 +706,14 @@ class Chat extends Entity {
                         }
                         if (xValue === undefined || xValue === null) xValue = 0;
                         if (yValue === undefined || yValue === null) yValue = 0;
-                        result = xValue > yValue ? 1 : (xValue == yValue ? 0 : -1);
+                        result = xValue > yValue ? 1 : (xValue === yValue ? 0 : -1);
+                    }
+                    result *= isInverse ? (-1) : 1;
                 }
-                result *= isInverse ? (-1) : 1;
             }
             return result * (isFinalInverse ? (-1) : 1);
         });
     }
- }
+}
 
 export default Chat;

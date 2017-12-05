@@ -16,8 +16,11 @@
   }
 }
 
+@app-navbar-width: (50*@rem);
+
 .app-navbar {
   z-index: 1040;
+  width: @app-navbar-width;
 
   .nav-item {
     > .badge {
@@ -31,6 +34,10 @@
       top: (55*@rem);
     }
   }
+}
+
+.app-main-container {
+  left: @app-navbar-width;
 }
 
 .app-usermenu {
@@ -67,6 +74,25 @@
 }
 
 .app-member-profile {
+  .infos {
+    flex-wrap: wrap;
+    > div {
+      .flex-middle;
+      display: inline-flex;
+      font-size: (12*@rem);
+      padding-right: (10*@rem);
+      line-height: (25*@rem);
+
+      > .icon {
+        margin-right: (4*@rem);
+      }
+
+      + div {
+        padding-left: (10*@rem);
+      }
+    }
+  }
+
   .app-member-profile-dialog & {
     min-width: (450*@rem);
   }
@@ -81,6 +107,14 @@
         margin: 0;
         padding: @space 0 0!important;
         text-align: center;
+      }
+    }
+
+    .infos {
+      justify-content: center;
+      > div {
+        display: inline-flex;
+        padding: 0 (5*@rem)!important;
       }
     }
 
@@ -208,5 +242,33 @@
 }
 
 .app-user-change-pwd-dialog {
-  width: (400*@rem);
+  width: (300*@rem);
+}
+
+.app-avatar {
+  padding: (10*@rem) (15*@rem);
+  text-align: center;
+  width: (90*@rem);
+  max-height: (100*@rem);
+
+  .avatar {
+    width: (50*@rem);
+    height: (50*@rem);
+
+    > .icon {
+      font-size: (36*@rem);
+    }
+
+    > .text {
+      font-size: (30*@rem);
+      font-weight: bold;
+      line-height: 1;
+    }
+  }
+
+  > .text {
+    .text-ellipsis;
+    margin: (5*@rem) (-10*@rem) 0;
+    .small;
+  }
 }

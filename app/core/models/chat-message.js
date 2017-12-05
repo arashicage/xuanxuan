@@ -1,9 +1,6 @@
 import Entity from './entity';
 import Status from '../../utils/status';
 import Member from './member';
-import Markdown from '../../utils/markdown';
-import Emojione from '../../components/emojione';
-import TimeSequence from '../../utils/time-sequence';
 
 const STATUS = new Status({
     draft: 0,
@@ -34,6 +31,7 @@ class ChatMessage extends Entity {
     static SCHEMA = Entity.SCHEMA.extend({
         cgid: {type: 'string', indexed: true},
         user: {type: 'int', indexed: true},
+        order: {type: 'int', indexed: true},
         date: {type: 'timestamp', indexed: true},
         type: {type: 'string', indexed: true, defaultValue: TYPES.normal},
         contentType: {type: 'string', indexed: true, defaultValue: CONTENT_TYPES.text},
@@ -51,9 +49,6 @@ class ChatMessage extends Entity {
                 this.onStatusChange(newStatus, this);
             }
         };
-        if (!this.$.order) {
-            this.$.order = TimeSequence();
-        }
         if (!this.$.contentType) {
             this.$.contentType = CONTENT_TYPES.text;
         }
@@ -73,7 +68,8 @@ class ChatMessage extends Entity {
             contentType: this.contentType,
             content: this.content,
             date: '',
-            user: this.senderId
+            user: this.senderId,
+            order: this.order,
         };
     }
 
@@ -91,11 +87,11 @@ class ChatMessage extends Entity {
     }
 
     get order() {
-        return this.$.order;
+        return this.$get('order', 0);
     }
 
     set order(order) {
-        this.$.order = order;
+        this.$set('order', order);
     }
 
     // ChatMessage status
@@ -251,15 +247,14 @@ class ChatMessage extends Entity {
         }
     }
 
-    renderedTextContent(converter) {
+    renderedTextContent(...converters) {
         if (this._renderedTextContent === undefined) {
             let content = this.content;
             if (typeof content === 'string' && content.length) {
-                content = content.replace(/\n\n\n/g, '\u200B\n\u200B\n\u200B\n').replace(/\n\n/g, '\u200B\n\u200B\n');
-                content = Markdown(content);
-                content = Emojione.toImage(content);
-                if (converter) {
-                    content = converter(content);
+                if (converters && converters.length) {
+                    converters.forEach(converter => {
+                        content = converter(content);
+                    });
                 }
                 this._renderedTextContent = content;
                 this._isBlockContent = content && (content.includes('<h1 id="') || content.includes('<h2 id="') || content.includes('<h3 id="'));
@@ -338,7 +333,8 @@ class ChatMessage extends Entity {
             send: content.send,
             type: content.type,
             id: content.id,
-            time: content.time
+            time: content.time,
+            isImage: content.type && content.type.startsWith('image')
         });
         this._fileContent = content;
     }
@@ -404,6 +400,19 @@ class ChatMessage extends Entity {
             return chatMessage;
         }
         return new ChatMessage(chatMessage);
+    }
+
+    static sort(messages) {
+        return messages.sort((x, y) => {
+            let orderResult = x.date - y.date;
+            if (orderResult === 0 && x.order && y.order) {
+                orderResult = x.order - y.order;
+            }
+            if (orderResult === 0) {
+                orderResult = (x.id || Number.MAX_SAFE_INTEGER) - (y.id || Number.MAX_SAFE_INTEGER);
+            }
+            return orderResult;
+        });
     }
 }
 

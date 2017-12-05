@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS `im_chat` (
   `editedBy` varchar(30) NOT NULL DEFAULT '',
   `editedDate` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
   `lastActiveTime` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `dismissDate` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
   PRIMARY KEY (`id`),
   KEY `gid` (`gid`),
   KEY `name` (`name`),
@@ -29,9 +30,11 @@ CREATE TABLE IF NOT EXISTS `im_message` (
   `cgid` char(40) NOT NULL DEFAULT '',
   `user` varchar(30) NOT NULL DEFAULT '',
   `date` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `order` mediumint(8) unsigned NOT NULL,
   `type` enum('normal', 'broadcast') NOT NULL DEFAULT 'normal',
   `content` text NOT NULL DEFAULT '',
   `contentType` enum('text', 'emotion', 'image', 'file', 'object') NOT NULL DEFAULT 'text',
+  `data` text NOT NULL DEFAULT '',
   PRIMARY KEY (`id`),
   KEY `mgid` (`gid`),
   KEY `mcgid` (`cgid`),
@@ -50,6 +53,7 @@ CREATE TABLE IF NOT EXISTS `im_chatuser`(
   `mute` enum('0', '1') NOT NULL DEFAULT '0',
   `join` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
   `quit` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `category` varchar(40) NOT NULL DEFAULT '',
   PRIMARY KEY (`id`),
   KEY `cgid` (`cgid`),
   KEY `user` (`user`),
@@ -69,5 +73,5 @@ CREATE TABLE IF NOT EXISTS `im_usermessage`(
   KEY `muser` (`user`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
-ALTER TABLE `sys_user` ADD `status` enum('online', 'away', 'busy', 'offline') NOT NULL DEFAULT 'offline'; 
+ALTER TABLE `sys_user` ADD `status` enum('online', 'away', 'busy', 'offline') NOT NULL DEFAULT 'offline';
 ALTER TABLE `sys_file` CHANGE `pathname` `pathname` char(100) NOT NULL;

@@ -45,6 +45,21 @@ export default class MDIcon extends Component {
         children: PropTypes.any
     }
 
+
+    static render(icon, props) {
+        let iconView = null;
+        if (icon) {
+            if (React.isValidElement(icon)) {
+                iconView = icon;
+            } else if (typeof icon === 'object') {
+                iconView = <MDIcon {...icon} {...props} />;
+            } else if (icon) {
+                iconView = <MDIcon name={icon} {...props} />;
+            }
+        }
+        return iconView;
+    }
+
     /**
      * React life cycle method: render
      *
@@ -75,6 +90,14 @@ export default class MDIcon extends Component {
             style.height = style.fontSize;
             style.width = style.fontSize;
         }
-        return <i style={style} {...other} className={HTML.classes(`icon mdi mdi-${name}`, className)}>{children}</i>;
+        let iconName = '';
+        if (name.startsWith('mdi-')) {
+            iconName = `mdi ${name}`;
+        } else if (name.startsWith('icon-')) {
+            iconName = name;
+        } else {
+            iconName = `mdi mdi-${name}`;
+        }
+        return <i style={style} {...other} className={HTML.classes(`icon ${iconName}`, className)}>{children}</i>;
     }
 }

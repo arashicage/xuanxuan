@@ -1,31 +1,40 @@
-import React, {Component} from 'react';
-import ReactDOM from 'react-dom';
+import React, {Component, PropTypes} from 'react';
 import HTML from '../../utils/html-helper';
-import Icon from '../../components/icon';
-import Lang from '../../lang';
-import App from '../../core';
-import FileListItem from './file-list-item';
+import {FileListItem} from './file-list-item';
+import replaceViews from '../replace-views';
 
 class FileList extends Component {
+    static get FileList() {
+        return replaceViews('common/file-list', FileList);
+    }
+
+    static propTypes = {
+        files: PropTypes.array.isRequired,
+        listItemProps: PropTypes.object,
+        className: PropTypes.string,
+    };
+
+    static defaultProps = {
+        className: null,
+        listItemProps: null,
+    };
 
     render() {
-        let {
+        const {
             files,
             className,
-            children,
             listItemProps,
             ...other
         } = this.props;
 
-        return <div {...other}
+        return (<div
+            {...other}
             className={HTML.classes('app-file-list list', className)}
         >
-        {
-            files.map(file => {
-                return <FileListItem {...listItemProps} key={file.id} file={file}/>;
-            })
-        }
-        </div>;
+            {
+                files && files.map(file => (<FileListItem {...listItemProps} key={file.id} file={file} />))
+            }
+        </div>);
     }
 }
 

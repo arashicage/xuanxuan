@@ -1,16 +1,16 @@
 import React, {Component, PropTypes} from 'react';
-import ReactDOM from 'react-dom';
 import HTML from '../../utils/html-helper';
 import Icon from '../../components/icon';
 import ClickOutsideWrapper from '../../components/click-outside-wrapper';
 import Lang from '../../lang';
 import App from '../../core';
-import StatusDot from '../common/status-dot';
+import {StatusDot} from '../common/status-dot';
 import User from '../../core/profile/user';
 import UserProfileDialog from '../common/user-profile-dialog';
 import AboutDialog from '../common/about-dialog';
 import UserSettingDialog from '../common/user-setting-dialog';
 import UserChangePasswordDialog from '../common/user-change-password-dialog';
+import replaceViews from '../replace-views';
 
 const allStatus = [
     User.STATUS.getName(User.STATUS.online),
@@ -19,6 +19,10 @@ const allStatus = [
 ];
 
 class UserMenu extends Component {
+    static get UserMenu() {
+        return replaceViews('main/user-menu', UserMenu);
+    }
+
     static defaultProps = {
         onRequestClose: null,
         children: null,
@@ -88,11 +92,11 @@ class UserMenu extends Component {
         >
             {
                 allStatus.map(statusName => {
-                    return <a key={statusName} onClick={this.handleStatusClick.bind(this, statusName)} className="item flex-middle">
-                        <StatusDot status={statusName}/>
+                    return (<a key={statusName} onClick={this.handleStatusClick.bind(this, statusName)} className="item flex-middle">
+                        <StatusDot status={statusName} />
                         <div className="title">{Lang.string(`member.status.${statusName}`)}</div>
-                        {userStatusName === statusName && <Icon name="check" className="text-green"/>}
-                    </a>;
+                        {userStatusName === statusName && <Icon name="check" className="text-green" />}
+                    </a>);
                 })
             }
             <div className="divider" />

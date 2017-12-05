@@ -36,14 +36,12 @@ const chatAddmember = (msg, socket) => {
     let chat = chats.get(msg.data.gid);
     if (chat) {
         const serverChatMembers = Chat.create(msg.data).members;
-
         chat.resetMembers(Array.from(serverChatMembers).map(x => members.get(x)));
         chats.update(chat);
         return chat;
-    } else {
-        chat = new Chat(msg.data);
-        chats.update(chat);
     }
+    chat = new Chat(msg.data);
+    chats.update(chat);
 };
 
 const chatGetlist = (msg, socket) => {
@@ -78,7 +76,7 @@ const chatMessage = (msg, socket) => {
         }
 
         if (messages && messages.length) {
-            chats.updateChatMessages(messages);
+            imServer.handleReceiveChatMessages(messages);
         }
     }
 };
@@ -101,10 +99,24 @@ const chatHistory = (msg, socket) => {
 
 const chatStar = (msg, socket) => {
     if (msg.isSuccess) {
-        let chat = chats.get(msg.data.gid);
+        const chat = chats.get(msg.data.gid);
         if (chat) {
             chat.star = msg.data.star;
             chats.update(chat);
+        }
+    }
+};
+
+const chatCategory = (msg, socket) => {
+    if (msg.isSuccess) {
+        const {gids, category} = msg.data;
+        if (gids && gids.length) {
+            const chatsForUpdate = gids.map(gid => {
+                const chat = chats.get(gid);
+                chat.category = category;
+                return chat;
+            });
+            chats.update(chatsForUpdate);
         }
     }
 };
@@ -127,17 +139,16 @@ const chatJoinchat = (msg, socket) => {
                 imUI.activeChat(chat);
             }
             return chat;
-        } else {
-            chats.remove(chat.gid);
-            return chat;
         }
+        chats.remove(chat.gid);
+        return chat;
     }
     imServer.chatJoinTask = false;
 };
 
 const chatHide = (msg, socket) => {
     if (msg.isSuccess) {
-        let chat = chats.get(msg.data.gid);
+        const chat = chats.get(msg.data.gid);
         if (chat) {
             chat.hide = msg.data.hide;
             chats.update(chat);
@@ -145,9 +156,20 @@ const chatHide = (msg, socket) => {
     }
 };
 
+const chatDismiss = (msg, socket) => {
+    if (msg.isSuccess) {
+        const chat = chats.get(msg.data.gid);
+        if (chat) {
+            chat.dismissDate = msg.data.dismissDate;
+            chats.update(chat);
+            return chat;
+        }
+    }
+};
+
 const chatChangepublic = (msg, socket) => {
     if (msg.isSuccess) {
-        let chat = chats.get(msg.data.gid);
+        const chat = chats.get(msg.data.gid);
         if (chat) {
             chat.public = msg.data.public;
             chats.update(chat);
@@ -159,14 +181,13 @@ const chatGetpubliclist = (msg, socket) => {
     let publicChats;
     if (msg.isSuccess) {
         publicChats = msg.data.map(x => {
-            let chat = new Chat(x);
+            const chat = new Chat(x);
             chat.updateMembersSet(members);
             return chat;
         });
         return publicChats;
-    } else {
-        publicChats = [];
     }
+    publicChats = [];
     chats.updatePublicChats(publicChats);
 };
 
@@ -179,8 +200,10 @@ export default {
     'chat/message': chatMessage,
     'chat/history': chatHistory,
     'chat/star': chatStar,
+    'chat/category': chatCategory,
     'chat/joinchat': chatJoinchat,
     'chat/hide': chatHide,
+    'chat/dismiss': chatDismiss,
     'chat/changepublic': chatChangepublic,
     'chat/getpubliclist': chatGetpubliclist,
 };

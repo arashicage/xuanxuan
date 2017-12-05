@@ -1,9 +1,7 @@
-import React, {Component} from 'react';
-import ReactDOM from 'react-dom';
+import React from 'react';
 import Modal from '../../components/modal';
 import Lang from '../../lang';
-import App from '../../core';
-import MessagesList from './message-list';
+import {MessageList} from './message-list';
 
 const show = (messages, props, callback) => {
     const modalId = 'app-messages-preview-dialog';
@@ -20,7 +18,7 @@ const show = (messages, props, callback) => {
         },
         actions: false,
         contentClassName: 'box',
-        content: <MessagesList listItemProps={{ignoreStatus: true}} showDateDivider={false} messages={messages}/>
+        content: <MessageList listItemProps={{ignoreStatus: true}} showDateDivider={false} messages={messages} />
     }, props), callback);
 };
 

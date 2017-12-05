@@ -1,7 +1,7 @@
 
 import fs from 'fs-extra';
-import config from '../common/config'
-import sound from '../common/sound'
+import config from '../common/config';
+import sound from '../common/sound';
 import env from './env';
 import screenshot from './screenshot';
 import contextmenu from './contextmenu';
@@ -16,8 +16,9 @@ import net from './net';
 import crypto from './crypto';
 import Socket from './socket';
 import clipboard from './clipboard';
+import webview from './webview';
 
-if(process.type !== 'renderer') {
+if (process.type !== 'renderer') {
     throw new Error('platform/electron/index.js must run in renderer process.');
 }
 
@@ -39,10 +40,11 @@ const platform = {
     crypto,
     Socket,
     notify,
-    clipboard
+    clipboard,
+    webview,
 };
 
-if(DEBUG) {
+if (DEBUG) {
     global.$.Platform = platform;
 }
 

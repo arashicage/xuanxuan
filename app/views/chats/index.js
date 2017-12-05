@@ -1,39 +1,58 @@
-import React, {Component} from 'react';
-import ReactDOM from 'react-dom';
-import HTML from '../../utils/html-helper';
-import Config from 'Config';
-import Menu from './menu';
-import ChatsCacheView from './chats-cache';
-import App from '../../core';
+import React, {Component, PropTypes} from 'react';
 import {Route, Redirect} from 'react-router-dom';
-import ChatsDndContainer from './chats-dnd-container';
+import SplitPane from 'react-split-pane';
+import HTML from '../../utils/html-helper';
+import App from '../../core';
+import {Menu} from './menu';
+import {ChatsCache} from './chats-cache';
+import {ChatsDndContainer} from './chats-dnd-container';
+import replaceViews from '../replace-views';
 
-class IndexView extends Component {
+class Index extends Component {
+    static propTypes = {
+        match: PropTypes.object.isRequired,
+        hidden: PropTypes.bool,
+        className: PropTypes.string,
+    };
+
+    static defaultProps = {
+        hidden: false,
+        className: null,
+    };
+
+    static get Index() {
+        return replaceViews('chats/index', Index);
+    }
 
     render() {
         const {
+            hidden,
+            className,
             match
         } = this.props;
 
         App.im.ui.activeChat(match.params.id);
 
-        const menuWidth = HTML.rem(Config.ui['menu.width']);
-
-        return <div className="dock app-chats">
-            <Menu className="dock-left" filter={match.params.filterType} style={{width: menuWidth}}/>
-            <ChatsCacheView style={{left: menuWidth}} className="dock-right" filterType={match.params.filterType} chatId={match.params.id}>
-                <ChatsDndContainer className="dock"/>
-            </ChatsCacheView>
-            <Route path="/chats/:filterType" exact render={props => {
-                const activeChatId = App.im.ui.currentActiveChatId;
-                if(activeChatId) {
-                    return <Redirect to={`${props.match.url}/${activeChatId}`}/>
-                } else {
+        return (<div className={HTML.classes('dock app-chats', className, {hidden})}>
+            <SplitPane split="vertical" maxSize={400} minSize={200} defaultSize={200}>
+                <Menu className="dock" filter={match.params.filterType} />
+                <ChatsCache className="dock" filterType={match.params.filterType} chatId={match.params.id}>
+                    <ChatsDndContainer className="dock" />
+                </ChatsCache>
+            </SplitPane>
+            <Route
+                path="/chats/:filterType"
+                exact
+                render={props => {
+                    const activeChatId = App.im.ui.currentActiveChatId;
+                    if (activeChatId) {
+                        return <Redirect to={`${props.match.url}/${activeChatId}`} />;
+                    }
                     return null;
-                }
-            }}/>
-        </div>;
+                }}
+            />
+        </div>);
     }
 }
 
-export default IndexView;
+export default Index;

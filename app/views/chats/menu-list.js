@@ -1,10 +1,12 @@
-import React, {Component} from 'react';
+import React, {Component, PropTypes} from 'react';
 import HTML from '../../utils/html-helper';
 import App from '../../core';
-import ChatListItem from './chat-list-item';
-import MemberListItem from '../common/member-list-item';
-import UserProfileDialog from '../common/user-profile-dialog';
 import ContextMenu from '../../components/context-menu';
+import {ChatListItem} from './chat-list-item';
+import {MenuContactList} from './menu-contact-list';
+import {MenuGroupList} from './menu-group-list';
+import {MenuSearchList} from './menu-search-list';
+import replaceViews from '../replace-views';
 
 const loadChats = (filter, search) => {
     let chats = null;
@@ -22,6 +24,26 @@ const loadChats = (filter, search) => {
 };
 
 class MenuList extends Component {
+    static propTypes = {
+        className: PropTypes.string,
+        search: PropTypes.string,
+        filter: PropTypes.string,
+        children: PropTypes.any,
+        onRequestClearSearch: PropTypes.func,
+    };
+
+    static defaultProps = {
+        className: null,
+        search: null,
+        filter: null,
+        children: null,
+        onRequestClearSearch: null,
+    };
+
+    static get MenuList() {
+        return replaceViews('chats/menu-list', MenuList);
+    }
+
     componentDidMount() {
         this.dataChangeHandler = App.events.onDataChange(data => {
             this.forceUpdate();
@@ -32,36 +54,45 @@ class MenuList extends Component {
         App.events.off(this.dataChangeHandler);
     }
 
-    handleUserItemClick = () => {
-        UserProfileDialog.show();
-    }
-
-    handleItemContextMenu(chat, e) {
-        const menuItems = App.im.ui.createChatContextMenuItems(chat);
+    handleItemContextMenu = (chat, e) => {
+        const menuItems = App.im.ui.createChatContextMenuItems(chat, this.props.filter, this.props.filter === 'groups' ? 'category' : '');
         ContextMenu.show({x: e.pageX, y: e.pageY}, menuItems);
         e.preventDefault();
-    }
+    };
 
     render() {
         const {
             search,
             filter,
+            onRequestClearSearch,
             className,
-            style,
             children,
             ...other
         } = this.props;
 
-        const chats = loadChats(filter, search);
-        const user = App.user;
+        if (search) {
+            return <MenuSearchList className={className} filter={filter} search={search} onRequestClearSearch={onRequestClearSearch} {...other} />;
+        } else if (filter === 'contacts') {
+            return <MenuContactList className={className} filter={filter} {...other} />;
+        } else if (filter === 'groups') {
+            return <MenuGroupList className={className} filter={filter} {...other} />;
+        }
 
-        return (<div className={HTML.classes('app-chats-menu-list list scroll-y', className)} style={style} {...other}>
-            {!search && user && filter === 'contacts' && user.config.showMeOnMenu && <MemberListItem member={user} avatarSize={24} showStatusDot={false} onClick={this.handleUserItemClick}/>}
-            {
-                chats.map(chat => {
-                    return <ChatListItem onContextMenu={this.handleItemContextMenu.bind(this, chat)} key={chat.gid} filterType={filter} chat={chat} className="item"/>;
-                })
+        const chats = loadChats(filter, search);
+        let hasActiveChatItem = false;
+        const activeChat = App.im.ui.currentActiveChat;
+        const chatItemsView = chats.map(chat => {
+            if (activeChat && activeChat.gid === chat.gid) {
+                hasActiveChatItem = true;
             }
+            return <ChatListItem onContextMenu={this.handleItemContextMenu.bind(this, chat)} key={chat.gid} filterType={filter} chat={chat} className="item" />;
+        });
+        if (!hasActiveChatItem && activeChat) {
+            chatItemsView.splice(0, 0, <ChatListItem onContextMenu={this.handleItemContextMenu.bind(this, activeChat)} key={activeChat.gid} filterType={filter} chat={activeChat} className="item" />);
+        }
+
+        return (<div className={HTML.classes('app-chats-menu-list list scroll-y', className)} {...other}>
+            {chatItemsView}
             {children}
         </div>);
     }

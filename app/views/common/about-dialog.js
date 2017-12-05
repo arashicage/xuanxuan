@@ -1,7 +1,6 @@
-import React, {Component} from 'react';
-import ReactDOM from 'react-dom';
+import React from 'react';
 import Modal from '../../components/modal';
-import AboutView from './about';
+import {About} from './about';
 import Lang from '../../lang';
 
 const show = (member, callback) => {
@@ -9,7 +8,7 @@ const show = (member, callback) => {
         title: Lang.string('common.about'),
         actions: false,
         id: 'app-about-dialog',
-        content: <AboutView/>
+        content: <About />
     }, callback);
 };
 

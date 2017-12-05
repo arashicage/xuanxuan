@@ -4,9 +4,9 @@ import im from './im';
 import db from './db';
 import server from './server';
 import notice from './notice';
-import theme from './theme';
 import events from './events';
 import ui from './ui';
+import models from './models';
 
 const app = {
     profile,
@@ -15,9 +15,9 @@ const app = {
     db,
     server,
     notice,
-    theme,
     events,
     ui,
+    models,
 
     get user() {
         return profile.user;

@@ -7,14 +7,17 @@ import db from '../db';
 import StringHelper from '../../utils/string-helper';
 import DateHelper from '../../utils/date-helper';
 import TaskQueue from '../../utils/task-queue';
+import timeSequence from '../../utils/time-sequence';
+import Lang from '../../lang';
+import Server from '../server';
 
 const CHATS_LIMIT_DEFAULT = 100;
-const MAX_RECENT_TIME  = 1000*60*60*24*7;
+const MAX_RECENT_TIME = 1000 * 60 * 60 * 24 * 7;
 const SEARCH_SCORE_MAP = {
-    matchAll   : 100,
+    matchAll: 100,
     matchPrefix: 75,
-    include    : 50,
-    similar    : 10
+    include: 50,
+    similar: 10
 };
 const EVENT = {
     init: 'chats.init',
@@ -92,17 +95,16 @@ const saveChatMessages = (messages, chat) => {
     // Save messages to database
     if (messages.length) {
         return db.database.chatMessages.bulkPut(messages.map(x => x.plain()));
-    } else {
-        return Promise.resolve(0);
     }
+    return Promise.resolve(0);
 };
 
 const updateChatMessages = (messages, muted = false) => {
     if (!Array.isArray(messages)) {
         messages = [messages];
     }
-    let chatsMessages = {};
-    let messagesForUpdate = [];
+    const chatsMessages = {};
+    const messagesForUpdate = [];
     messages.forEach(message => {
         message = ChatMessage.create(message);
         messagesForUpdate.push(message);
@@ -138,7 +140,7 @@ const deleteLocalMessage = (message) => {
     const chat = get(message.cgid);
     chat.removeMessage(message.gid);
     Events.emitDataChange({chats: {[chat.gid]: chat}});
-    return db.database.chatMessages.delete(gid);
+    return db.database.chatMessages.delete(message.gid);
 };
 
 const countChatMessages = (cgid, filter) => {
@@ -150,9 +152,9 @@ const countChatMessages = (cgid, filter) => {
 };
 
 const loadChatMessages = (chat, queryCondition, limit = CHATS_LIMIT_DEFAULT, offset = 0, reverse = true, skipAdd = false, rawData = false, returnCount = false) => {
-    const cgid = chat.gid;
-    let collection =  db.database.chatMessages.orderBy('id').and(x => {
-        return x.cgid === cgid && (!queryCondition || queryCondition(x));
+    const cgid = chat ? chat.gid : null;
+    let collection = db.database.chatMessages.orderBy('id').and(x => {
+        return (!cgid || x.cgid === cgid) && (!queryCondition || queryCondition(x));
     });
     if (reverse) {
         collection = collection.reverse();
@@ -171,14 +173,13 @@ const loadChatMessages = (chat, queryCondition, limit = CHATS_LIMIT_DEFAULT, off
     return collection.toArray(chatMessages => {
         if (chatMessages && chatMessages.length) {
             const result = rawData ? chatMessages : chatMessages.map(ChatMessage.create);
-            if (!skipAdd) {
+            if (!skipAdd && cgid) {
                 chat.addMessages(result, profile.userId, true, true);
                 Events.emitDataChange({chats: {[cgid]: chat}});
             }
             return Promise.resolve(result);
-        } else {
-            return Promise.resolve([]);
         }
+        return Promise.resolve([]);
     });
 };
 
@@ -191,7 +192,7 @@ const searchChatMessages = (chat, searchKeys = '', minDate = 0, returnCount = fa
         if (!msg.id || (minDate && msg.date < minDate)) {
             return false;
         }
-        for (let key of keys) {
+        for (const key of keys) {
             if (key === '[image]') {
                 if (msg.contentType !== 'image') {
                     return false;
@@ -212,10 +213,10 @@ const searchChatMessages = (chat, searchKeys = '', minDate = 0, returnCount = fa
     }, 0, 0, true, true, false, returnCount);
 };
 
-const createCountMessagesTask = (chats, searchKeys, minDateDesc = '') => {
+const createCountMessagesTask = (countChats, searchKeys, minDateDesc = '') => {
     const minDate = minDateDesc ? DateHelper.getTimeBeforeDesc(minDateDesc) : 0;
     const taskQueue = new TaskQueue();
-    taskQueue.add(chats.map(chat => {
+    taskQueue.add(countChats.map(chat => {
         return {func: searchChatMessages.bind(null, chat, searchKeys, minDate, true), chat};
     }));
     return taskQueue;
@@ -235,7 +236,9 @@ const update = (chatArr) => {
         newchats = {};
         chatArr.forEach(chat => {
             chat = Chat.create(chat);
-            newchats[chat.gid] = chat;
+            if (chat.visible) {
+                newchats[chat.gid] = chat;
+            }
         });
     } else {
         newchats = chatArr;
@@ -252,11 +255,22 @@ const init = (chatArr) => {
     chats = {};
     if (chatArr && chatArr.length) {
         update(chatArr);
+        const tempMemberIdList = [];
         forEach(chat => {
-            if (!chat.hasSetMessages) {
+            if (chat.isOne2One) {
+                const member = chat.getTheOtherOne(app);
+                if (member.temp) {
+                    tempMemberIdList.push(member.id);
+                    chat.isDeleteOne2One = true;
+                }
+            }
+            if (!chat.hasSetMessages && chat.visible) {
                 loadChatMessages(chat);
             }
         });
+        if (tempMemberIdList.length && profile.user.isVersionSupport('userGetListWithId')) {
+            Server.fetchUserList(tempMemberIdList);
+        }
         Events.emit(EVENT.init, chats);
     }
 };
@@ -271,10 +285,10 @@ const query = (condition, sortList) => {
     }
     let result = null;
     if (typeof condition === 'object') {
-        let conditionObj = condition;
-        let conditionKeys = Object.keys(conditionObj);
+        const conditionObj = condition;
+        const conditionKeys = Object.keys(conditionObj);
         condition = chat => {
-            for (let key of conditionKeys) {
+            for (const key of conditionKeys) {
                 if (conditionObj[key] !== chat[key]) {
                     return false;
                 }
@@ -306,7 +320,6 @@ const query = (condition, sortList) => {
     return result || [];
 };
 
-
 const getRecents = (includeStar = true, sortList = true) => {
     const all = getAll();
     let recents = null;
@@ -315,7 +328,7 @@ const getRecents = (includeStar = true, sortList = true) => {
     } else {
         const now = new Date().getTime();
         recents = all.filter(chat => {
-            return chat.noticeCount || (includeStar && chat.star) || (chat.lastActiveTime && (now - chat.lastActiveTime) <= MAX_RECENT_TIME);
+            return !chat.isDeleteOne2One && !chat.isDismissed && (chat.noticeCount || (includeStar && chat.star) || (chat.lastActiveTime && (now - chat.lastActiveTime) <= MAX_RECENT_TIME));
         });
         if (!recents.length) {
             recents = all.filter(chat => chat.isSystem);
@@ -327,41 +340,313 @@ const getRecents = (includeStar = true, sortList = true) => {
     return recents;
 };
 
+const getLastRecentChat = () => {
+    let lastActiveTime = 0;
+    let lastRecentChat = null;
+    forEach(chat => {
+        if (!chat.isDeleteOne2One && !chat.isDismissed && lastActiveTime < chat.lastActiveTime) {
+            lastActiveTime = chat.lastActiveTime;
+            lastRecentChat = chat;
+        }
+    });
+    if (!lastRecentChat) {
+        lastRecentChat = getAll().find(x => x.isSystem);
+    }
+    return lastRecentChat;
+};
+
 const getContactChat = (member) => {
-    let members = [member.id, profile.user.id].sort();
+    const members = [member.id, profile.user.id].sort();
     const gid = members.join('&');
     return get(gid);
 };
 
-const getContactsChats = (sortList = true) => {
-    let contactsChats = [];
+const getContactsChats = (sortList = true, groupedBy = false) => {
+    const {user} = profile;
+    let contactChats = [];
+    if (!user) {
+        return contactChats;
+    }
+
+    const contactChatMap = {};
     members.forEach(member => {
         if (member.id !== profile.user.id) {
-            contactsChats.push(getContactChat(member, true));
+            contactChatMap[member.id] = getContactChat(member, true);
         }
     });
-    if (sortList) {
-        Chat.sort(contactsChats, sortList, app);
+
+    query(x => x.isOne2One).forEach(theChat => {
+        if (!contactChatMap[theChat.id]) {
+            const member = theChat.getTheOtherOne(app);
+            contactChatMap[member.id] = theChat;
+        }
+    });
+
+    contactChats = Object.keys(contactChatMap).map(x => contactChatMap[x]);
+
+    if (groupedBy === 'role') {
+        const groupedContactChats = {};
+        contactChats.forEach(chat => {
+            const member = chat.getTheOtherOne(app);
+            const isDeleteOne2One = member.isDeleted;
+            if (isDeleteOne2One) {
+                chat.isDeleteOne2One = isDeleteOne2One;
+            }
+            const isMemberOnline = member.isOnline;
+            const role = member.role || '';
+            const groupName = isDeleteOne2One ? Lang.string('chats.menu.group.deleted') : members.getRoleName(role);
+            const groupId = isDeleteOne2One ? '_delete' : role;
+            if (!groupedContactChats[groupId]) {
+                groupedContactChats[groupId] = {id: groupId, title: groupName, list: [chat], onlineCount: isMemberOnline ? 1 : 0};
+                if (isDeleteOne2One) {
+                    groupedContactChats[groupId].system = true;
+                }
+            } else {
+                groupedContactChats[groupId].list.push(chat);
+                if (isMemberOnline) {
+                    groupedContactChats[groupId].onlineCount += 1;
+                }
+            }
+        });
+        const orders = profile.user.config.contactsOrderRole;
+        return Object.keys(groupedContactChats).map(role => {
+            const group = groupedContactChats[role];
+            if (sortList) {
+                Chat.sort(group.list, sortList, app);
+            }
+            return group;
+        }).sort((g1, g2) => {
+            let result = (g2.system ? 1 : 0) - (g1.system ? 1 : 0);
+            if (result === 0) {
+                result = (g1.id ? (orders[g1.id] || 1) : 0) - (g2.id ? (orders[g2.id] || 1) : 0);
+            }
+            if (result === 0) {
+                result = g1.id > g2.id ? 1 : 0;
+            }
+            return -result;
+        });
+    } else if (groupedBy === 'dept') {
+        const groupsMap = {};
+        Object.keys(members.depts).forEach(deptId => {
+            const dept = members.depts[deptId];
+            groupsMap[deptId] = {
+                id: deptId,
+                title: dept.name,
+                dept,
+                list: [],
+                onlineCount: 0
+            };
+        });
+        contactChats.forEach(chat => {
+            const member = chat.getTheOtherOne(app);
+            const isDeleteOne2One = member.isDeleted;
+            if (isDeleteOne2One) {
+                chat.isDeleteOne2One = isDeleteOne2One;
+            }
+            const isMemberOnline = member.isOnline;
+            const groupId = isDeleteOne2One ? '_delete' : member.dept;
+            if (groupsMap[groupId]) {
+                groupsMap[groupId].list.push(chat);
+                if (isMemberOnline) {
+                    groupsMap[groupId].onlineCount += 1;
+                }
+            } else {
+                const dept = members.getDept(groupId);
+                const groupName = isDeleteOne2One ? Lang.string('chats.menu.group.deleted') : (dept && dept.name);
+                groupsMap[groupId] = {
+                    id: groupId,
+                    title: groupName,
+                    dept,
+                    list: [chat],
+                    onlineCount: isMemberOnline ? 1 : 0
+                };
+                if (isDeleteOne2One) {
+                    groupsMap[groupId].system = true;
+                }
+            }
+        });
+        const groupArr = Object.keys(groupsMap).map(deptId => {
+            const group = groupsMap[deptId];
+            const dept = group.dept;
+            if (dept) {
+                if (dept.children) {
+                    group.children = dept.children.map(x => groupsMap[x.id]);
+                }
+                if (dept.parents) {
+                    group.hasParent = true;
+                }
+            }
+            group.type = 'group';
+            group.order = dept && dept.order;
+            if (sortList) {
+                Chat.sort(group.list, sortList, app);
+            }
+            return group;
+        });
+        const deptsSorter = (d1, d2) => {
+            let result = (d1.system ? 1 : 0) - (d2.system ? 1 : 0);
+            if (result === 0) {
+                result = (d2.list && d2.list.length ? 1 : 0) - (d1.list && d1.list.length ? 1 : 0);
+            }
+            if (result === 0) {
+                result = (d2.dept ? 1 : 0) - (d1.dept ? 1 : 0);
+            }
+            return result !== 0 ? result : members.deptsSorter(d1, d2);
+        };
+        return groupArr.map(x => {
+            if (x.children) {
+                x.children.sort(deptsSorter);
+                const list = x.children;
+                if (x.list) {
+                    list.push(...x.list);
+                }
+                x.list = list;
+            }
+            return x;
+        }).filter(x => !x.hasParent).sort(deptsSorter);
+    } else if (groupedBy === 'category') {
+        const groupedChats = {};
+        contactChats.forEach(chat => {
+            const member = chat.getTheOtherOne(app);
+            const isDeleteOne2One = member.isDeleted;
+            if (isDeleteOne2One) {
+                chat.isDeleteOne2One = isDeleteOne2One;
+            }
+            const categoryId = isDeleteOne2One ? '_delete' : (chat.category || '');
+            const categoryName = isDeleteOne2One ? Lang.string('chats.menu.group.deleted') : (categoryId || user.config.contactsDefaultCategoryName);
+            const isMemberOnline = member.isOnline;
+            if (!groupedChats[categoryId]) {
+                groupedChats[categoryId] = {id: categoryId, title: categoryName || Lang.string('chats.menu.group.default'), list: [chat], onlineCount: isMemberOnline ? 1 : 0};
+                if (isDeleteOne2One) {
+                    groupedChats[categoryId].system = true;
+                }
+            } else {
+                groupedChats[categoryId].list.push(chat);
+                if (isMemberOnline) {
+                    groupedChats[categoryId].onlineCount += 1;
+                }
+            }
+        });
+        const categories = user.config.contactsCategories;
+        let needSaveOrder = false;
+        const orderedGroups = Object.keys(groupedChats).map(categoryId => {
+            const group = groupedChats[categoryId];
+            let savedCategory = categories[categoryId];
+            if (!savedCategory) {
+                const order = timeSequence();
+                savedCategory = {
+                    order,
+                    key: order
+                };
+                categories[categoryId] = savedCategory;
+                needSaveOrder = true;
+            }
+            Object.assign(group, savedCategory);
+            if (sortList) {
+                Chat.sort(group.list, sortList, app);
+            }
+            return group;
+        }).sort((g1, g2) => {
+            let result = g2.order - g1.order;
+            if (result === 0) {
+                result = g1.id > g2.id ? -1 : 1;
+            }
+            return -result;
+        });
+        if (needSaveOrder) {
+            user.config.contactsCategories = categories;
+        }
+        return orderedGroups;
+    } else if (sortList) {
+        Chat.sort(contactChats, sortList, app);
     }
-    return contactsChats;
+    return contactChats;
 };
 
-const getGroups = (sortList = true) => {
-    return query(chat => chat.isGroupOrSystem, sortList);
+const getGroups = (sortList = true, groupedBy = false) => {
+    const {user} = profile;
+    if (!user) {
+        return [];
+    }
+    const groupChats = query(chat => chat.isGroupOrSystem, sortList);
+    if (groupedBy === 'category') {
+        const groupedChats = {};
+        groupChats.forEach(chat => {
+            const isDismissed = chat.isDismissed;
+            const categoryId = isDismissed ? '_dismissed' : (chat.category || '');
+            const categoryName = isDismissed ? Lang.string('chats.menu.group.dismissed') : (categoryId || user.config.groupsDefaultCategoryName);
+            if (!groupedChats[categoryId]) {
+                groupedChats[categoryId] = {id: categoryId, title: categoryName || Lang.string('chats.menu.group.default'), list: [chat]};
+                if (isDismissed) {
+                    groupedChats[categoryId].system = true;
+                }
+            } else {
+                groupedChats[categoryId].list.push(chat);
+            }
+        });
+        const groupKeys = Object.keys(groupedChats);
+        if (groupKeys.length === 1 && !groupKeys[0]) {
+            return groupChats;
+        }
+        const categories = user.config.groupsCategories;
+        let needSaveOrder = false;
+        const orderedGroups = groupKeys.map(categoryId => {
+            const group = groupedChats[categoryId];
+            let savedCategory = categories[categoryId];
+            if (!savedCategory) {
+                const order = categoryId === '_dismissed' ? 999999999999 : timeSequence();
+                savedCategory = {
+                    order,
+                    key: order
+                };
+                categories[categoryId] = savedCategory;
+                needSaveOrder = true;
+            }
+            Object.assign(group, savedCategory);
+            if (sortList) {
+                Chat.sort(group.list, sortList, app);
+            }
+            return group;
+        }).sort((g1, g2) => {
+            let result = g2.order - g1.order;
+            if (result === 0) {
+                result = g1.id > g2.id ? 1 : -1;
+            }
+            return -result;
+        });
+        if (needSaveOrder) {
+            user.config.groupsCategories = categories;
+        }
+        return orderedGroups;
+    }
+    return groupChats;
 };
 
-const search = (search, chatType) => {
-    if (StringHelper.isEmpty(search)) {
+const getChatCategories = (type = 'contact') => {
+    if (type === 'contact') {
+        return getContactsChats(false, 'category');
+    } else if (type === 'group') {
+        const groups = getGroups(false, 'category');
+        if (groups.length && groups[0].entityType === 'Chat') {
+            return [];
+        }
+        return groups;
+    }
+    return [];
+};
+
+const search = (searchKeys, chatType) => {
+    if (StringHelper.isEmpty(searchKeys)) {
         return [];
     }
-    search = search.trim().toLowerCase().split(' ');
-    if (!search.length) {
+    searchKeys = searchKeys.trim().toLowerCase().split(' ');
+    if (!searchKeys.length) {
         return [];
     }
 
-    const hasChatType = !!chatType;
     const isContactsType = chatType === 'contacts';
     const isGroupsType = chatType === 'groups';
+    const hasChatType = isContactsType || isGroupsType;
 
     if (!hasChatType || isContactsType) {
         getContactsChats();
@@ -387,16 +672,12 @@ const search = (search, chatType) => {
         }
 
         let score = 0;
-        const imApp = {
-            members,
-            user: profile.user
-        };
-        const chatName = chat.getDisplayName(imApp, false).toLowerCase();
-        const pinYin = chat.getPinYin(imApp);
+        const chatName = chat.getDisplayName(app, false).toLowerCase();
+        const pinYin = chat.getPinYin(app);
         let theOtherOneAccount = '';
         let theOtherOneContactInfo = '';
         if (chat.isOne2One) {
-            const theOtherOne = chat.getTheOtherOne(imApp);
+            const theOtherOne = chat.getTheOtherOne(app);
             if (theOtherOne) {
                 theOtherOneAccount = theOtherOne.account;
                 theOtherOneContactInfo += (theOtherOne.email || '') + (theOtherOne.mobile || '');
@@ -404,7 +685,7 @@ const search = (search, chatType) => {
                 console.warn('Cannot get the other one of chat', chat);
             }
         }
-        search.forEach(s => {
+        searchKeys.forEach(s => {
             if (StringHelper.isEmpty(s)) {
                 return;
             }
@@ -443,9 +724,8 @@ const remove = gid => {
         delete chats[gid];
         Events.emitDataChange({chats: {[gid]: removeChat}});
         return true;
-    } else {
-        return false;
     }
+    return false;
 };
 
 const getChatFiles = (chat, includeFailFile = false) => {
@@ -525,4 +805,6 @@ export default {
     countChatMessages,
     createCountMessagesTask,
     searchChatMessages,
+    getChatCategories,
+    getLastRecentChat,
 };

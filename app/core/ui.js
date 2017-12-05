@@ -3,6 +3,7 @@ import Server from './server';
 import MemberProfileDialog from '../views/common/member-profile-dialog';
 import Messager from '../components/messager';
 import ContextMenu from '../components/context-menu';
+import modal from '../components/modal';
 import HTML from '../utils/html-helper';
 import Lang from '../lang';
 import Events from './events';
@@ -35,7 +36,7 @@ const createImageContextMenuItems = (url, dataType) => {
         items.push({
             label: Lang.string('menu.image.saveAs'),
             click: () => {
-                Platform.dialog.saveAsImageFromUrl(url, dataType).then(filename => {
+                return Platform.dialog.saveAsImageFromUrl(url, dataType).then(filename => {
                     if (filename) {
                         Messager.show(Lang.format('file.fileSavedAt.format', filename), {
                             actions: Platform.ui.openFileItem ? [{
@@ -79,8 +80,8 @@ onAppLinkClick('Member', target => {
     MemberProfileDialog.show(target);
 });
 
-Server.onUserLogin(user => {
-    if (user.isFirstSignedToday) {
+Server.onUserLogin((user, loginError) => {
+    if (!loginError && user.isFirstSignedToday) {
         Messager.show(Lang.string('login.signed'), {
             type: 'success',
             icon: 'calendar-check',
@@ -169,7 +170,7 @@ const completeDragNDrop = () => {
 
 window.ondragover = e => {
     clearTimeout(dragLeaveTask);
-    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+    if (e.dataTransfer && e.dataTransfer.types.includes('Files')) {
         document.body.classList.add('drag-n-drop-over');
         setTimeout(() => {
             document.body.classList.add('drag-n-drop-over-in');
@@ -252,6 +253,20 @@ if (Platform.ui.onWindowBlur && Platform.ui.hideWindow) {
     });
 }
 
+const reloadWindow = () => {
+    if (Platform.ui.reloadWindow) {
+        return modal.confirm(Lang.string('dialog.reloadWindowConfirmTip'), {title: Lang.string('dialog.reloadWindowConfirm')}).then(confirmed => {
+            if (confirmed) {
+                Server.logout();
+                setTimeout(() => {
+                    Platform.ui.reloadWindow();
+                }, 1000);
+            }
+            return Promise.resolve(confirm);
+        });
+    }
+};
+
 // Decode url params
 const entryParams = HTML.getSearchParam();
 
@@ -265,5 +280,7 @@ export default {
     quit,
     showMessger: Messager.show,
     showContextMenu: ContextMenu.show,
-    createImageContextMenuItems
+    modal,
+    createImageContextMenuItems,
+    reloadWindow,
 };

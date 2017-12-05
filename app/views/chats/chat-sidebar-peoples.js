@@ -1,14 +1,35 @@
-import React, {Component} from 'react';
-import ReactDOM from 'react-dom';
+import React, {Component, PropTypes} from 'react';
 import HTML from '../../utils/html-helper';
 import Icon from '../../components/icon';
+import ContextMenu from '../../components/context-menu';
 import Lang from '../../lang';
 import App from '../../core';
-import MemberList from '../common/member-list';
 import Member from '../../core/models/member';
-import ContextMenu from '../../components/context-menu';
+import {MemberList} from '../common/member-list';
+import replaceViews from '../replace-views';
+import ChatInviteDialog from './chat-invite-dialog';
+
+const handleMemberItemClick = member => {
+    App.im.ui.sendContentToChat(`@${member.displayName} `);
+};
 
 class ChatSidebarPeoples extends Component {
+    static propTypes = {
+        className: PropTypes.string,
+        chat: PropTypes.object,
+        children: PropTypes.any,
+    };
+
+    static defaultProps = {
+        className: null,
+        chat: null,
+        children: null,
+    };
+
+    static get ChatSidebarPeoples() {
+        return replaceViews('chats/chat-sidebar-peoples', ChatSidebarPeoples);
+    }
+
     componentDidMount() {
         this.dataChangeEventHandler = App.events.onDataChange(data => {
             if (data && data.members) {
@@ -23,32 +44,32 @@ class ChatSidebarPeoples extends Component {
 
     handleItemRender = member => {
         const {chat} = this.props;
-        let committerIcon = null, adminIcon = null;
+        let committerIcon = null;
+        let adminIcon = null;
         if (!chat.isCommitter(member)) {
-            committerIcon = <div data-hint={Lang.string('chat.committers.blocked')} className="hint--left side-icon text-gray inline-block"><Icon name="lock-outline"/></div>;
+            committerIcon = <div data-hint={Lang.string('chat.committers.blocked')} className="hint--left side-icon text-gray inline-block"><Icon name="lock-outline" /></div>;
         }
         if (chat.isAdmin(member)) {
-            adminIcon = <div data-hint={Lang.string('chat.role.admin')} className="hint--left side-icon text-gray inline-block"><Icon name="account-circle"/></div>;
+            adminIcon = <div data-hint={Lang.string('chat.role.admin')} className="hint--left side-icon text-gray inline-block"><Icon name="account-circle" /></div>;
         }
         if (committerIcon && adminIcon) {
             return <div>{committerIcon}{adminIcon}</div>;
-        } else {
-            return committerIcon || adminIcon;
         }
-    }
-
-    handleMemberItemClick(member) {
-        App.im.ui.sendContentToChat(`@${member.displayName} `);
+        return committerIcon || adminIcon;
     }
 
     handleItemContextMenu = (member, e) => {
-        const items = App.im.ui.createChatMemberContextMenuItems(member);
+        const items = App.im.ui.createChatMemberContextMenuItems(member, this.props.chat);
         ContextMenu.show({x: e.pageX, y: e.pageY}, items);
         e.preventDefault();
     }
 
+    handleInviteBtnClick = e => {
+        ChatInviteDialog.show(this.props.chat);
+    };
+
     render() {
-        let {
+        const {
             chat,
             className,
             children,
@@ -66,12 +87,32 @@ class ChatSidebarPeoples extends Component {
             return 0;
         }, 'status', 'namePinyin', '-id']);
 
-        return <div {...other}
+        let onlineCount = 0;
+        members.forEach(member => {
+            if (member.isOnline) {
+                onlineCount += 1;
+            }
+        });
+
+        return (<div
+            {...other}
             className={HTML.classes('app-chat-sidebar-peoples has-padding', className)}
         >
-            <MemberList onItemClick={this.handleMemberItemClick.bind(this)} onItemContextMenu={this.handleItemContextMenu} itemRender={this.handleItemRender} className="white rounded compact" members={members} listItemProps={{avatarSize: 20}}/>
+
+            <MemberList
+                onItemClick={handleMemberItemClick}
+                onItemContextMenu={this.handleItemContextMenu}
+                itemRender={this.handleItemRender}
+                className="white rounded compact"
+                members={members}
+                listItemProps={{avatarSize: 20}}
+                heading={<header className="heading divider">
+                    <div className="title small text-gray">{onlineCount}/{members.length}</div>
+                    <nav className="nav">{chat.canInvite(App.user) && <a onClick={this.handleInviteBtnClick}><Icon name="account-multiple-plus" /> &nbsp;{Lang.string('chat.invite')}</a>}</nav>
+                </header>}
+            />
             {children}
-        </div>;
+        </div>);
     }
 }
 

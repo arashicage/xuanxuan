@@ -1,6 +1,16 @@
 import Entity from './entity';
 import Pinyin from '../../utils/pinyin';
 import Status from '../../utils/status';
+import SearchScore from '../../utils/search-score';
+
+const MATCH_SCORE_MAP = [
+    {name: 'namePinyin', equal: 100, include: 50},
+    {name: 'displayName', equal: 100, include: 50},
+    {name: 'account', equal: 100, include: 50},
+    {name: 'email', equal: 70, include: 30},
+    {name: 'phone', equal: 70, include: 30},
+    {name: 'site', equal: 50, include: 25},
+];
 
 const STATUS = new Status({
     unverified: 0, // 未登录
@@ -26,6 +36,7 @@ class Member extends Entity {
         gender: {type: 'string'},
         dept: {type: 'int', indexed: true},
         admin: {type: 'string'},
+        deleted: {type: 'boolean'},
     });
 
     constructor(data, entityType = Member.NAME) {
@@ -35,6 +46,10 @@ class Member extends Entity {
 
     get schema() {
         return Member.SCHEMA;
+    }
+
+    get isDeleted() {
+        return this.$get('deleted');
     }
 
     // Member status
@@ -76,6 +91,28 @@ class Member extends Entity {
 
     get gender() {
         return this.$get('gender');
+    }
+
+    get dept() {
+        return this.$get('dept');
+    }
+
+    getDept(app) {
+        const dept = this.dept;
+        if (dept && !this._dept) {
+            this._dept = app.members.getDept(dept);
+        }
+        return this._dept;
+    }
+
+    getDeptName(app) {
+        const dept = this.getDept(app);
+        return dept && dept.name;
+    }
+
+    getDeptFullName(app) {
+        const dept = this.getDept(app);
+        return dept && dept.fullName;
     }
 
     get isSuperAdmin() {
@@ -126,6 +163,14 @@ class Member extends Entity {
         return this.$get('role');
     }
 
+    getRoleName(app) {
+        const role = this.role;
+        if (role && !this._role) {
+            this._role = app.members.getRoleName(role);
+        }
+        return this._role;
+    }
+
     get displayName() {
         let name = this.$get('realname', `[${this.account}]`);
         if (!name) {
@@ -139,6 +184,10 @@ class Member extends Entity {
             this._namePinyin = Pinyin(this.displayName);
         }
         return this._namePinyin;
+    }
+
+    getMatchScore(keys) {
+        return SearchScore.matchScore(MATCH_SCORE_MAP, this, keys);
     }
 
 
@@ -182,31 +231,34 @@ class Member extends Entity {
                 if (result !== 0) break;
                 if (typeof order === 'function') {
                     result = order(y, x);
-                    continue;
-                }
-                const isInverse = order[0] === '-';
-                if (isInverse) order = order.substr(1);
-                switch (order) {
-                case 'me':
-                    if (userMe) {
-                        if (userMeId === x.id) result = 1;
-                        else if (userMeId === y.id) result = -1;
+                } else {
+                    const isInverse = order[0] === '-';
+                    if (isInverse) order = order.substr(1);
+                    let xStatus = x.status;
+                    let yStatus = y.status;
+                    let xValue;
+                    let yValue;
+                    switch (order) {
+                    case 'me':
+                        if (userMe) {
+                            if (userMeId === x.id) result = 1;
+                            else if (userMeId === y.id) result = -1;
+                        }
+                        break;
+                    case 'status':
+                        if (xStatus === STATUS.online) xStatus = 100;
+                        if (yStatus === STATUS.online) yStatus = 100;
+                        result = xStatus > yStatus ? 1 : (xStatus == yStatus ? 0 : -1);
+                        break;
+                    default:
+                        xValue = x[order];
+                        yValue = y[order];
+                        if (xValue === undefined || xValue === null) xValue = 0;
+                        if (yValue === undefined || yValue === null) yValue = 0;
+                        result = xValue > yValue ? 1 : (xValue == yValue ? 0 : -1);
                     }
-                    break;
-                case 'status':
-                    let xStatus = x.status,
-                        yStatus = y.status;
-                    if (xStatus === STATUS.online) xStatus = 100;
-                    if (yStatus === STATUS.online) yStatus = 100;
-                    result = xStatus > yStatus ? 1 : (xStatus == yStatus ? 0 : -1);
-                    break;
-                default:
-                    let xValue = x[order], yValue = y[order];
-                    if (xValue === undefined || xValue === null) xValue = 0;
-                    if (yValue === undefined || yValue === null) yValue = 0;
-                    result = xValue > yValue ? 1 : (xValue == yValue ? 0 : -1);
+                    result *= isInverse ? (-1) : 1;
                 }
-                result *= isInverse ? (-1) : 1;
             }
             return result * (isFinalInverse ? (-1) : 1);
         });

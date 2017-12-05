@@ -1,6 +1,6 @@
 import {remote} from 'electron';
 
-let shortcuts = {};
+const shortcuts = {};
 
 /**
  * Unregister global hotkey
@@ -9,10 +9,10 @@ let shortcuts = {};
  */
 const unregisterGlobalShortcut = (name) => {
     const accelerator = shortcuts[name];
-    if(accelerator) {
+    if (accelerator) {
         remote.globalShortcut.unregister(accelerator);
         delete shortcuts[name];
-        if(DEBUG) {
+        if (DEBUG) {
             console.color(`GLOBAL HOTKEY REMOVE ${name}: ${accelerator}`, 'purpleOutline');
         }
     }
@@ -26,24 +26,26 @@ const unregisterGlobalShortcut = (name) => {
  */
 const registerGlobalShortcut = (name, accelerator, callback) => {
     unregisterGlobalShortcut(name);
-    shortcuts[name] = accelerator;
-    remote.globalShortcut.register(accelerator, () => {
-        if(DEBUG) {
-            console.color(`GLOBAL KEY ACTIVE ${name}: ${accelerator}`, 'redOutline');
+    if (accelerator) {
+        shortcuts[name] = accelerator;
+        remote.globalShortcut.register(accelerator, () => {
+            if (DEBUG) {
+                console.color(`GLOBAL KEY ACTIVE ${name}: ${accelerator}`, 'redOutline');
+            }
+            callback();
+        });
+        if (DEBUG) {
+            console.color(`GLOBAL HOTKEY BIND ${name}: ${accelerator}`, 'purpleOutline');
         }
-        callback();
-    });
-    if(DEBUG) {
-        console.color(`GLOBAL HOTKEY BIND ${name}: ${accelerator}`, 'purpleOutline');
+    } else if (DEBUG) {
+        console.color(`GLOBAL HOTKEY BIND ${name}: error`, 'purpleOutline', 'Cannot bind empty accelerator', 'red');
     }
 };
 
 /**
  * Check a shortcu whether is registered
  */
-const isGlobalShortcutRegistered = (accelerator) => {
-    return remote.globalShortcut.isRegistered(accelerator);
-};
+const isGlobalShortcutRegistered = (accelerator) => remote.globalShortcut.isRegistered(accelerator);
 
 export default {
     unregisterAll: remote.globalShortcut.unregisterAll,

@@ -1,19 +1,17 @@
 import {
     shell,
     remote as Remote,
-    nativeImage as NativeImage,
 } from 'electron';
-import remote from './remote';
-import env from './env';
 import uuid from 'uuid/v4';
 import Path from 'path';
+import remote from './remote';
 import shortcut from './shortcut';
 import Lang from '../../lang';
+import env from './env';
 
-let _appRoot = null;
-remote.call('entryPath').then(path => {
-    _appRoot = path;
-});
+if (DEBUG) {
+    global.$.Remote = Remote;
+}
 
 const userDataPath = Remote.app.getPath('userData');
 const browserWindow = Remote.getCurrentWindow();
@@ -29,7 +27,7 @@ const makeTmpFilePath = (ext = '') => {
 };
 
 const setBadgeLabel = (label = '') => {
-    return remote.call('dockBadgeLabel', (label || '') + '');
+    return remote.call('dockBadgeLabel', `${label || ''}`);
 };
 
 const setShowInTaskbar = flag => {
@@ -70,8 +68,8 @@ const quitIM = () => {
 };
 
 const quit = (delay = 1000, ignoreListener = false) => {
-    if(delay !== true && !ignoreListener && onRequestQuitListener) {
-        if(onRequestQuitListener(delay) === false) {
+    if (delay !== true && !ignoreListener && onRequestQuitListener) {
+        if (onRequestQuitListener(delay) === false) {
             return;
         }
     }
@@ -79,7 +77,7 @@ const quit = (delay = 1000, ignoreListener = false) => {
     browserWindow.hide();
     shortcut.unregisterAll();
 
-    if(delay && delay !== true) {
+    if (delay && delay !== true) {
         setTimeout(quitIM, delay);
     } else {
         quitIM();
@@ -117,12 +115,12 @@ const showQuitConfirmDialog = (callback) => {
         buttons: [Lang.string('dialog.appClose.minimizeMainWindow'), Lang.string('dialog.appClose.quitApp'), Lang.string('dialog.appClose.cancelAction')],
     }, (result, checked) => {
         result = ['minimize', 'close', ''][result];
-        if(callback) {
+        if (callback) {
             result = callback(result, checked);
         }
-        if(result === 'minimize') {
+        if (result === 'minimize') {
             hideWindow();
-        } else if(result === 'close') {
+        } else if (result === 'close') {
             quit(true);
         }
     });
@@ -132,6 +130,10 @@ const openDevTools = () => {
     browserWindow.openDevTools();
     global.DEBUG = true;
     window.DEBUG = true;
+};
+
+const reloadWindow = () => {
+    browserWindow.reload();
 };
 
 browserWindow.on('restore', () => {
@@ -163,6 +165,7 @@ export default {
     showAndFocusWindow,
     showQuitConfirmDialog,
     quit,
+    reloadWindow,
 
     get isWindowFocus() {
         return browserWindow.isFocused();
@@ -177,6 +180,6 @@ export default {
     },
 
     get appRoot() {
-        return _appRoot;
+        return env.appRoot;
     },
 };

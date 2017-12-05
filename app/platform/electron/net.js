@@ -1,9 +1,36 @@
-import network from '../common/network';
 import fse from 'fs-extra';
 import Request from 'request';
 import Path from 'path';
-import {userDataPath} from './ui';
 import uuid from 'uuid/v4';
+import network from '../common/network';
+import {userDataPath} from './ui';
+
+const localFilePaths = {};
+const saveLocalFile = (file, user, path) => {
+    if (file.id) {
+        const localId = `${user.identify}:${file.id}`;
+        localFilePaths[localId] = path || file.src || file.path;
+    }
+};
+const isFileExists = (file, user) => {
+    if (file.id) {
+        const localId = `${user.identify}:${file.id}`;
+        if (localFilePaths[localId]) {
+            return Promise.resolve(localFilePaths[localId]);
+        }
+    }
+    const fileSavePath = file.path || createImageFilePath(user, file);
+    return fse.pathExists(fileSavePath).then(exists => {
+        if (exists) {
+            if (file.id) {
+                saveLocalFile(file, user, fileSavePath);
+            }
+            return Promise.resolve(fileSavePath);
+        }
+        return Promise.resolve(false);
+    });
+};
+network.isFileExists = isFileExists;
 
 const downloadFileOrigin = network.downloadFile;
 
@@ -23,7 +50,7 @@ const downloadFileWithRequest = (user, url, fileSavePath, onProgress) => {
             let progress = 0;
             onProgress(0);
             onProgressTimer = setInterval(() => {
-                progress += (100 - progress)/20;
+                progress += (100 - progress) / 20;
                 onProgress(progress);
             }, 1000);
         }
@@ -74,13 +101,13 @@ const downloadFile = (user, file, onProgress) => {
         if (exists) {
             file.src = fileSavePath;
             return Promise.resolve(file);
-        } else {
-            fse.ensureDirSync(Path.dirname(fileSavePath));
-            return downloadFileWithRequest(user, file.url, fileSavePath, onProgress).then(() => {
-                file.src = fileSavePath;
-                return Promise.resolve(file);
-            });
         }
+        fse.ensureDirSync(Path.dirname(fileSavePath));
+        return downloadFileWithRequest(user, file.url, fileSavePath, onProgress).then(() => {
+            saveLocalFile(file, user, fileSavePath);
+            file.src = fileSavePath;
+            return Promise.resolve(file);
+        });
     });
 };
 
@@ -141,14 +168,14 @@ network.uploadFile = (user, file, data = {}, onProgress = null) => {
         const copyPath = data.copy ? createImageFilePath(user, {name: filename}) : null;
         const onFileBufferData = fileBufferData => {
             const headers = {'Content-Type': 'multipart/form-data'};
-            headers['ServerName'] = user.serverName;
-            headers['Authorization'] = user.token;
+            headers.ServerName = user.serverName;
+            headers.Authorization = user.token;
 
             const multipart = {
                 chunked: false,
                 data: [
                     {
-                        'Content-Disposition': 'form-data; name="file"; filename="' + filename + '"',
+                        'Content-Disposition': `form-data; name="file"; filename="${filename}"`,
                         body: fileBufferData
                     }, {
                         'Content-Disposition': 'form-data; name="userID"',
@@ -173,7 +200,7 @@ network.uploadFile = (user, file, data = {}, onProgress = null) => {
             if (onProgress) {
                 let progress = 0;
                 onProgressTimer = setInterval(() => {
-                    progress += (100 - progress)/20;
+                    progress += (100 - progress) / 20;
                     onProgress(progress);
                 }, 1000);
             }
@@ -195,7 +222,7 @@ network.uploadFile = (user, file, data = {}, onProgress = null) => {
                             error.code = 'WRONG_DATA';
                         }
                     } catch (err) {
-                        if (body.indexOf("user-deny-attach-upload") > 0) {
+                        if (body.indexOf('user-deny-attach-upload') > 0) {
                             err.code = 'USER_DENY_ATTACT_UPLOAD';
                         } else {err.code = 'WRONG_DATA';}
                         error = err;
@@ -227,6 +254,7 @@ network.uploadFile = (user, file, data = {}, onProgress = null) => {
         if (file.path) {
             if (data.copy) {
                 fse.copySync(file.path, copyPath);
+                saveLocalFile(file, user, copyPath);
             }
             const fileBufferData = fse.readFileSync(file.path);
             onFileBufferData(fileBufferData);
@@ -240,10 +268,8 @@ network.uploadFile = (user, file, data = {}, onProgress = null) => {
                 onFileBufferData(result);
             };
             fileReader.readAsArrayBuffer(file.blob);
-        } else {
-            if (DEBUG) {
-                throw new Error('Cannot upload file, becase file object is not valid.', file);
-            }
+        } else if (DEBUG) {
+            throw new Error('Cannot upload file, becase file object is not valid.', file);
         }
     });
 };

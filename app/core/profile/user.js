@@ -189,7 +189,7 @@ class User extends Member {
 
     get ranzhiUrl() {
         if (this._ranzhiUrl === undefined) {
-            this._ranzhiUrl = `http://${this.server.hostname}`;
+            this._ranzhiUrl = this.$get('ranzhiUrl') || `http://${this.server.hostname}`;
         }
         return this._ranzhiUrl;
     }
@@ -310,14 +310,6 @@ class User extends Member {
         this.$set('cipherIV', cipherIV);
     }
 
-    get serverVersion() {
-        return this.$get('serverVersion');
-    }
-
-    set serverVersion(serverVersion) {
-        this.$set('serverVersion', serverVersion);
-    }
-
     get uploadFileSize() {
         return this.$get('uploadFileSize');
     }
@@ -385,7 +377,7 @@ class User extends Member {
         if (password.startsWith(PASSWORD_WITH_MD5_FLAG)) {
             password = password.substr(PASSWORD_WITH_MD5_FLAG.length);
         } else {
-            password = Md5(password)
+            password = Md5(password);
         }
         return password;
     }
@@ -395,6 +387,19 @@ class User extends Member {
             newPassword = PASSWORD_WITH_MD5_FLAG + Md5(newPassword);
         }
         this.$set('password', newPassword);
+    }
+
+    isVersionSupport(name) {
+        return this._versionSupport && this._versionSupport[name];
+    }
+
+    setVersionSupport(flags) {
+        if (flags) {
+            if (!this._versionSupport) {
+                this._versionSupport = {};
+            }
+            Object.assign(this._versionSupport, flags);
+        }
     }
 
     static create(user) {

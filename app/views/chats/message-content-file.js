@@ -1,13 +1,24 @@
-import React, {Component} from 'react';
-import ReactDOM from 'react-dom';
+import React, {Component, PropTypes} from 'react';
 import HTML from '../../utils/html-helper';
-import App from '../../core';
-import FileListItem from '../common/file-list-item';
+import {FileListItem} from '../common/file-list-item';
+import replaceViews from '../replace-views';
 
-class MessageContentFileView extends Component {
+class MessageContentFile extends Component {
+    static propTypes = {
+        className: PropTypes.string,
+        message: PropTypes.object.isRequired,
+    };
+
+    static defaultProps = {
+        className: null,
+    };
+
+    static get MessageContentFile() {
+        return replaceViews('chats/chat-content-file', MessageContentFile);
+    }
 
     render() {
-        let {
+        const {
             message,
             className,
             ...other
@@ -15,8 +26,8 @@ class MessageContentFileView extends Component {
 
         const content = message.fileContent;
 
-        return <FileListItem className="app-message-content-file layer rounded flex-inline shadow-2 list-item" file={content} {...other}/>;
+        return <FileListItem className={HTML.classes('app-message-content-file layer rounded flex-inline shadow-2 list-item', className)} file={content} {...other} />;
     }
 }
 
-export default MessageContentFileView;
+export default MessageContentFile;
